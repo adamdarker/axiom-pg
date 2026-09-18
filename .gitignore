@@ -1,0 +1,15 @@
+/data/
+*.pgdata
+*.log
+/axiom-agent
+patroni.yaml
+/pgbackrest.conf
+pgbouncer.ini
+agent.yaml
+userlist.txt
+pooltest_userlist.txt
+pooltest_stats.log
+agent-patched.log
+axiom-agent-patched
+pgbouncer.ini
+pooltest_pgbouncer.ini

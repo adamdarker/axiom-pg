@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package axiom.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/axiom/axiom-center/proto/agent/v1";
+
+// AxiomService is the main interface for communication between the Axiom Agent and Axiom Center.
+service AxiomService {
+  // Connect establishes a long-lived bidirectional stream for heartbeats and command delivery.
+  // The Agent (client) initiates the connection.
+  rpc Connect(stream HeartbeatRequest) returns (stream CommandRequest);
+
+  // PushLogs allows the Agent to stream PostgreSQL and system logs to the Center.
+  rpc PushLogs(stream LogBatch) returns (PushResponse);
+
+  // PushMetrics allows the Agent to stream telemetry data to the Center.
+  rpc PushMetrics(stream MetricBatch) returns (PushResponse);
+}
+
+message HeartbeatRequest {
+  string agent_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  HealthStatus status = 3;
+  
+  // The current state of the node (Postgres version, running services, etc.)
+  // Represented as a Struct to allow for flexible, evolution-friendly reporting.
+  google.protobuf.Struct current_state = 4;
+
+  // Results of commands that were executed since the last heartbeat.
+  repeated CommandResult results = 5;
+}
+
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTH_STATUS_HEALTHY = 1;
+  HEALTH_STATUS_DEGRADED = 2;
+  HEALTH_STATUS_UNHEALTHY = 3;
+}
+
+message CommandRequest {
+  // Unique identifier for tracking the command.
+  string command_id = 1;
+  
+  oneof command {
+    ReconcileCommand reconcile = 2;
+    BackupCommand backup = 3;
+    RestartCommand restart = 4;
+    BranchCommand branch = 5;
+    RestoreCommand restore = 6;
+    MigrationCommand migration = 7;
+    ValidateIndexCommand validate_index = 8;
+    PromoteToPrimaryCommand promote_to_primary = 9;
+    DRDrillCommand dr_drill = 10;
+  }
+}
+
+message DRDrillCommand {
+  string drill_id = 1;
+  string source_snapshot = 2; // Optional: specific snapshot to test
+  string validation_script = 3; // SQL script to run for validation
+  int32 tmp_port = 4;
+}
+
+message PromoteToPrimaryCommand {
+  string cluster_id = 1;
+  bool force = 2; // If true, ignore safety checks (use with caution)
+}
+
+message ValidateIndexCommand {
+  string validation_id = 1;
+  string table_name = 2;
+  string index_definition = 3;
+  string sample_query = 4;
+}
+
+message MigrationCommand {
+  string migration_id = 1;
+  string phase = 2; // pre-flight, schema, full-load, cdc, cutover
+  google.protobuf.Struct config = 3;
+}
+
+message CommandResult {
+  string command_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  google.protobuf.Struct output = 4;
+}
+
+// ReconcileCommand provides the 'Desired State' manifest.
+message ReconcileCommand {
+  // The desired state manifest (JSON/YAML structure).
+  google.protobuf.Struct desired_state = 1;
+}
+
+message BackupCommand {
+  string backup_id = 1;
+  // Type can be "full", "incremental", or "differential".
+  string type = 2;
+}
+
+message RestartCommand {
+  // The service name (e.g., "postgresql", "patroni", "agent").
+  string service = 1;
+}
+
+message BranchCommand {
+  string branch_id = 1;
+  string source_snapshot = 2;
+  string target_name = 3;
+}
+
+message RestoreCommand {
+  string restore_id = 1;
+  google.protobuf.Timestamp target_time = 2;
+  string target_lsn = 3;
+}
+
+message LogBatch {
+  string agent_id = 1;
+  repeated LogEntry entries = 2;
+}
+
+message LogEntry {
+  google.protobuf.Timestamp timestamp = 1;
+  string level = 2; // e.g., "INFO", "ERROR", "FATAL"
+  string message = 3;
+  google.protobuf.Struct metadata = 4;
+}
+
+message MetricBatch {
+  string agent_id = 1;
+  repeated MetricEntry entries = 2;
+}
+
+message MetricEntry {
+  string name = 1;
+  double value = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  map<string, string> labels = 4;
+}
+
+message PushResponse {
+  bool success = 1;
+  string error_message = 2;
+}
